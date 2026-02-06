@@ -2,86 +2,73 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      version = "6.27.0"
-    }   
-  }  
+      version = "6.30.0"
+    }
+  }
 }
-
 provider "aws" {
-  region = "us-west-2"
+  region = "us-east-1"
 }
 
-
-#key pair for ec2 instance login: now generate the key via "ssh-keygen" and copy the public key directly or via argument key_name= "file("public_key.pub")"
-resource "aws_key_pair" "my_terraform_key" {
-  key_name   = "my-key-pair"
-  public_key = file("public_key.pub")
-}
-
-#security group for ec2 instance
-
-#use default vpc id
-resource "aws_default_vpc" default {
-
-}
-
-#security group inbound and outbound rules
-resource "aws_security_group" "my_sg" {
-    name = "my-security-group"
-    description = "Security group for my EC2 instance"
-    vpc_id = aws_default_vpc.default.id #thid is known as interpolation
-
-
-    #inbound rules
-    ingress = {
-        from_port = 0
-        to_port = 0
-        protocol = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-        description = "Allow all inbound traffic"
-    }
-
-    #outbound rules
-    egress = {
-        from_port = 0
-        to_port = 0
-        protocol = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-        description = "Allow all outbound traffic"
-    }
-
-
-    tags = {
-        Name = "my-security-group"
-    }
-
+resource "aws_default_vpc" "default" {
   
 }
+  #Creating instance in ec2 automaticaty
+resource "aws_instance" "example" {
+  ami           = "ami-0b6c6ebed2801a5cb"
+  instance_type = "t3.micro"   #Amazon AMI 2 ID
+  vpc_security_group_ids = [aws_security_group.TF_SG.id]
+  #first Key Pair Method
+  key_name = "TF_Key"
 
-
-
-##ec2 instance resource
-resource "aws_instance" "my_ec2_instance" {
-    
-    #count = 1 # it defines how many instances to create and it is a meta-argument
-    #for each is another meta-argument alternative to count when you want to create multiple resources with different configurations
-    for_each = tomap({
-        my-instance1 = "t2.micro"
-        my-instance2 = "t3.micro"
-    })
-    ami = "ami-0c55b159cbfafe1f0" #amazon linux 2 AMI in us-west-2 region
-    instance_type = each.value
-    key_name = aws_key_pair.my_terraform_key.key_name
-    security_groups = [aws_security_group.my_sg.name]
-
-    root_block_device {
-        volume_size = 8
-        volume_type = "gp3"
-    }
-
-    tags = {
-        Name = each.key
-    }
-  
+  tags = {
+    Name = "cham-instance"
+  }
 }
 
+
+#Second Key Pair Method
+resource "aws_key_pair" "TF_Key" {
+  key_name   = "TF_Key"
+  public_key = tls_private_key.rsa.public_key_openssh
+}
+
+#FOR ABOVE PUBLIC KEY 
+resource "tls_private_key" "rsa" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+#TO CREATE A FOLDER TO STORE IN LOCALY on Sys
+resource "local_file" "TF_Key" {
+  content  = tls_private_key.rsa.private_key_pem
+  filename = "tfkey.pem"
+}
+
+#Security groups using Terraform
+
+resource "aws_security_group" "TF_SG" {
+  name        = "tf-sg"
+  description = "security group using Terraform"
+  vpc_id      = aws_default_vpc.default.id
+
+  ingress {
+    description      = "all-traffic"
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  tags = {
+    Name = "TF_SG"
+  }
+}
